@@ -1,0 +1,5 @@
+streamlit
+yt-dlp
+whisper
+pysubs2
+ffmpeg-python
