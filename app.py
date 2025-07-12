@@ -4,14 +4,16 @@ from yt_dlp.utils import DownloadError
 import subprocess
 import os
 import traceback
-import whisper as openai_whisper
-import uuid
+import whisper
+import tempfile
+from datetime import timedelta
 
+# Set download folder
 DOWNLOAD_FOLDER = "downloads"
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 st.set_page_config(
-    page_title="YouTube to Mirrored Video with Subtitles",
+    page_title="YouTube Video Downloader with Options",
     page_icon="🎬",
     layout="centered"
 )
@@ -24,14 +26,36 @@ if cookies_file:
     with open(cookie_path, "wb") as f:
         f.write(cookies_file.getbuffer())
 
-st.title("🎬 YouTube to Mirrored Video with Subtitles")
+st.title("🎬 YouTube to Video Editor")
 video_url = st.text_input("YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
+action = st.radio("Select Action", ["Download Original Video", "Download Mirrored Video", "Download Mirrored + Subtitled Video"])
 
-if st.button("Start Processing"):
+def transcribe_audio(video_path):
+    model = whisper.Whisper("base")
+    result = model.transcribe(video_path)
+    return result['segments']
+
+def burn_subtitles(input_path, output_path, segments):
+    drawtext_filters = []
+    for i, seg in enumerate(segments):
+        start = seg['start']
+        end = seg['end']
+        text = seg['text'].replace("'", "")
+        drawtext_filters.append(
+            f"drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf: text='{text}': fontcolor=white: fontsize=24: x=(w-text_w)/2: y=h-th-30: enable='between(t,{start},{end})'"
+        )
+    filter_complex = ",".join(drawtext_filters)
+    subprocess.run([
+        "ffmpeg", "-y", "-i", input_path,
+        "-vf", filter_complex,
+        "-c:a", "copy", output_path
+    ], check=True)
+
+if st.button("Start"):
     if not video_url.strip():
         st.warning("Enter a valid YouTube URL.")
     else:
-        with st.spinner("Downloading video..."):
+        with st.spinner("Processing..."):
             try:
                 ydl_opts = {
                     'outtmpl': os.path.join(DOWNLOAD_FOLDER, '%(title)s.%(ext)s'),
@@ -43,60 +67,56 @@ if st.button("Start Processing"):
                         'Accept-Language': 'en-US,en;q=0.9',
                     },
                     'geo_bypass': True,
+                    'geo_bypass_country': 'US',
                     'retries': 3,
                 }
                 if cookie_path:
                     ydl_opts['cookiefile'] = cookie_path
 
                 with YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(video_url, download=False)
+                    if info.get('is_live'):
+                        st.warning("Live streams are not supported.")
+                        st.stop()
+
                     info = ydl.extract_info(video_url, download=True)
                     file_name = ydl.prepare_filename(info)
                     if not file_name.endswith(".mp4"):
                         file_name += ".mp4"
 
                 st.success("Video downloaded!")
-                st.video(file_name)
 
-                # Mirror the video
-                mirrored_file = file_name.replace(".mp4", "_mirrored.mp4")
-                subprocess.run(["ffmpeg", "-y", "-i", file_name, "-vf", "hflip", "-c:a", "copy", mirrored_file], check=True)
-                st.success("Video mirrored!")
+                if action == "Download Original Video":
+                    with open(file_name, "rb") as f:
+                        st.download_button("Download Original Video", data=f, file_name=os.path.basename(file_name))
 
-                # Transcribe audio
-                st.info("Transcribing with Whisper...")
-                model = openai_whisper.load_model("base")
-                result = model.transcribe(mirrored_file)
+                elif action == "Download Mirrored Video":
+                    mirrored_file = file_name.replace(".mp4", "_mirrored.mp4")
+                    subprocess.run([
+                        "ffmpeg", "-y", "-i", file_name, "-vf", "hflip", "-c:a", "copy", mirrored_file
+                    ], check=True)
+                    st.success("Video mirrored!")
+                    with open(mirrored_file, "rb") as f:
+                        st.download_button("Download Mirrored Video", data=f, file_name=os.path.basename(mirrored_file))
 
-                # Create .srt subtitle file
-                srt_path = mirrored_file.replace(".mp4", ".srt")
-                with open(srt_path, "w", encoding="utf-8") as srt_file:
-                    for i, segment in enumerate(result["segments"], start=1):
-                        start = segment["start"]
-                        end = segment["end"]
-                        text = segment["text"]
-                        srt_file.write(f"{i}\n")
-                        srt_file.write(f"{int(start // 3600):02}:{int(start % 3600 // 60):02}:{int(start % 60):02},000 --> {int(end // 3600):02}:{int(end % 3600 // 60):02}:{int(end % 60):02},000\n")
-                        srt_file.write(f"{text.strip()}\n\n")
+                elif action == "Download Mirrored + Subtitled Video":
+                    mirrored_file = file_name.replace(".mp4", "_mirrored.mp4")
+                    final_output = file_name.replace(".mp4", "_mirrored_subtitled.mp4")
 
-                st.success("Subtitles generated!")
-
-                # Burn subtitles
-                output_file = mirrored_file.replace(".mp4", "_subtitled.mp4")
-                font_path = "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"
-                ffmpeg_cmd = [
-                    "ffmpeg", "-y", "-i", mirrored_file, "-vf",
-                    f"subtitles={srt_path}:force_style='FontName=Noto Sans,FontSize=24,Alignment=2'",
-                    output_file
-                ]
-                subprocess.run(ffmpeg_cmd, check=True)
-                st.success("Subtitled video created!")
-
-                with open(output_file, "rb") as f:
-                    st.download_button("Download Final Video", data=f, file_name=os.path.basename(output_file))
-                st.video(output_file)
+                    subprocess.run([
+                        "ffmpeg", "-y", "-i", file_name, "-vf", "hflip", "-c:a", "copy", mirrored_file
+                    ], check=True)
+                    st.info("Generating subtitles...")
+                    segments = transcribe_audio(file_name)
+                    st.info("Burning subtitles...")
+                    burn_subtitles(mirrored_file, final_output, segments)
+                    st.success("Video mirrored and subtitled!")
+                    with open(final_output, "rb") as f:
+                        st.download_button("Download Final Video", data=f, file_name=os.path.basename(final_output))
 
             except DownloadError as de:
                 st.error(f"Download failed: {de}")
+                st.info("403 means YouTube blocked access. Ensure your cookies.txt is from a logged-in account or the video may be private.")
             except Exception as e:
                 st.error(f"Unexpected error: {e}")
                 st.text(traceback.format_exc())
