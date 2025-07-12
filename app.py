@@ -120,7 +120,7 @@ if st.button("Start Processing"):
 
                 elif mode == "Mirrored + Subtitled Crops":
                     st.info("Transcribing with Whisper...")
-                    model = whisper.Whisper()
+                    model = whisper.load_model("base") 
                     result = model.transcribe(file_name)
                     st.success("Transcription done.")
 
