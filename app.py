@@ -1,6 +1,18 @@
-import os
-import tempfile
+import subprocess
 import streamlit as st
+
+# Install Playwright & its browsers once at startup (cached)
+@st.cache_data(show_spinner=False)
+def _install_playwright():
+    subprocess.run(["pip", "install", "--upgrade", "playwright"], check=True)
+    subprocess.run(["playwright", "install", "--with-deps"], check=True)
+
+_install_playwright()
+
+
+# --- rest of your app ---
+
+import tempfile
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from http.cookiejar import MozillaCookieJar
@@ -92,7 +104,6 @@ def main():
             st.error("Please upload a video and enter a title.")
             return
 
-        # persist cookies/video to temp
         ck = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
         ck.write(cookies_file.read()); ck.flush()
         vp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
