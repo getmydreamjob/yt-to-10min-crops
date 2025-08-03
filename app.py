@@ -13,8 +13,8 @@ CLIENT_SECRETS_FILE = "client_secrets.json"
 YOUTUBE_SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 # TikTok credentials placeholder
-TIKTOK_USERNAME = "YOUR_TIKTOK_USERNAME"
-TIKTOK_PASSWORD = "YOUR_TIKTOK_PASSWORD"
+TIKTOK_USERNAME = "greatone.02"
+TIKTOK_PASSWORD = "hebhor-xacgy0-hegtAp"
 
 def get_youtube_service():
     flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRETS_FILE, YOUTUBE_SCOPES)
