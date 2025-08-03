@@ -2,4 +2,3 @@ streamlit
 tiktok-uploader
 APScheduler
 selenium
-webdriver-manager
