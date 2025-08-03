@@ -12,26 +12,26 @@ from selenium.webdriver.chrome.service import Service
 def create_driver():
     """Launch a headless Chromium instance using the system chromedriver."""
     options = webdriver.ChromeOptions()
-    options.add_argument("--headless")
+    # new headless mode for Chrome 109+
+    options.add_argument("--headless=new")  
+    options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.binary_location = "/usr/bin/chromium"         # installed via packages.txt
+    options.add_argument("--remote-debugging-port=9222")
+    # point at the system-installed Chromium
+    options.binary_location = "/usr/bin/chromium"
 
-    service = Service("/usr/bin/chromedriver")            # installed via packages.txt
+    service = Service("/usr/bin/chromedriver")
     return webdriver.Chrome(service=service, options=options)
 
 def do_upload(video_path: str, title: str, cookies_path: str) -> (bool, str):
-    """
-    Perform the actual upload via tiktok-uploader + Selenium.
-    Returns (success, message).
-    """
     driver = create_driver()
     try:
         upload_video(
             video_path,
             description=title,
             cookies=cookies_path,
-            driver=driver,          # pass our driver
+            driver=driver,
         )
         driver.quit()
         return True, f"Uploaded “{title}” at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -58,17 +58,13 @@ def schedule_jobs(video_path: str, title: str, cookies_path: str):
 def main():
     st.title("🎬 TikTok Scheduler")
 
-    # 1) cookies.txt uploader
     cookies_upload = st.file_uploader(
         "Upload your TikTok cookies.txt (Netscape format)",
-        type=["txt"],
-        key="cookies_uploader"
+        type=["txt"], key="cookies_uploader"
     )
-    # 2) video uploader
     video_upload = st.file_uploader(
         "Upload your short video",
-        type=["mp4", "mov"],
-        key="video_uploader"
+        type=["mp4", "mov"], key="video_uploader"
     )
     title = st.text_input("Video Title", key="video_title")
 
@@ -78,23 +74,19 @@ def main():
         elif not video_upload or not title:
             st.error("Please upload a video and enter a title.")
         else:
-            # write cookies to temp file
             ck = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
             ck.write(cookies_upload.read())
             ck.flush()
             cookies_path = ck.name
 
-            # write video to temp file
             vid = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
             vid.write(video_upload.read())
             vid.flush()
             video_path = vid.name
 
-            # schedule and run test
             st.session_state.scheduler = schedule_jobs(video_path, title, cookies_path)
             upload_and_report(video_path, title, cookies_path)
 
-    # show next run & manual trigger
     if sched := st.session_state.get("scheduler"):
         if job := sched.get_job("tiktok_job"):
             st.write("**Next scheduled upload:**", job.next_run_time.strftime("%Y-%m-%d %H:%M:%S"))
