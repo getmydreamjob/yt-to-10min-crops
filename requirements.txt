@@ -2,3 +2,4 @@ streamlit
 tiktok-uploader
 APScheduler
 selenium
+undetected-chromedriver
