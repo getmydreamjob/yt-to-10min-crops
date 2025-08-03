@@ -1,5 +1,4 @@
-import sys
-import subprocess
+import os
 import tempfile
 import streamlit as st
 from datetime import datetime
@@ -7,30 +6,15 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from http.cookiejar import MozillaCookieJar
 from playwright.sync_api import sync_playwright
 
-# ─── Bootstrap Playwright at runtime ──────────────────────────────────────────
-@st.cache_data(show_spinner=False)
-def _ensure_playwright():
-    try:
-        # Try to import to see if browsers are already installed
-        import playwright._impl._connection
-        return
-    except ImportError:
-        pass
+# --- CONFIG ---
+# Ensure 'packages.txt' includes:
+# chromium
+# (Playwright will use this system Chromium binary)
+# Ensure 'requirements.txt' includes:
+# streamlit
+# playwright
+# apscheduler
 
-    st.sidebar.info("Installing Playwright browsers (this may take ~60s)…")
-    # 1) Ensure the package is installed
-    subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "playwright"], check=True)
-    # 2) Install the browser binaries
-    subprocess.run([sys.executable, "-m", "playwright", "install", "--with-deps"], check=True)
-
-# Run the above at startup (cached)
-try:
-    _ensure_playwright()
-except subprocess.CalledProcessError as e:
-    st.sidebar.error(f"Playwright install failed ({e.returncode}), uploads may not work.")
-
-
-# ─── TikTok Upload Logic via Playwright ───────────────────────────────────────
 
 def parse_netscape_cookies(path):
     cj = MozillaCookieJar()
@@ -49,25 +33,48 @@ def parse_netscape_cookies(path):
         })
     return cookies
 
+
+def find_chromium():
+    # Locate system-installed Chromium
+    for path in ["/usr/bin/chromium-browser", "/usr/bin/chromium"]:
+        if os.path.exists(path):
+            return path
+    raise FileNotFoundError("Chromium binary not found on system")
+
+
 def do_upload(video_path, title, cookies_path):
+    """
+    Upload via Playwright using the system Chromium binary.
+    """
+    chromium_path = find_chromium()
     with sync_playwright() as p:
         browser = p.chromium.launch(
+            executable_path=chromium_path,
             headless=True,
-            args=["--no-sandbox","--disable-dev-shm-usage"]
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu"
+            ]
         )
-        ctx = browser.new_context()
-        ctx.add_cookies(parse_netscape_cookies(cookies_path))
-        page = ctx.new_page()
+        context = browser.new_context()
+        context.add_cookies(parse_netscape_cookies(cookies_path))
+        page = context.new_page()
         page.goto("https://www.tiktok.com/upload?lang=en")
 
+        # Upload video file
         page.set_input_files("input[type='file']", video_path)
+        # Wait for description box to appear
         page.wait_for_selector("textarea[placeholder*='Describe']", timeout=30000)
         page.fill("textarea[placeholder*='Describe']", title)
+        # Click Publish
         page.click("button[data-e2e='publish-button']")
+        # Wait for success indicator
         page.wait_for_selector("div[data-e2e='publish-success']", timeout=60000)
         browser.close()
 
-    return True, f"Uploaded '{title}' @ {datetime.now():%Y-%m-%d %H:%M:%S}"
+    return True, f"Uploaded '{title}' at {datetime.now():%Y-%m-%d %H:%M:%S}'"
+
 
 def upload_and_report(video_path, title, cookies_path):
     try:
@@ -80,25 +87,26 @@ def upload_and_report(video_path, title, cookies_path):
     else:
         st.error(f"❌ {msg}")
 
+
 def schedule_jobs(video_path, title, cookies_path):
-    sched = BackgroundScheduler()
+    scheduler = BackgroundScheduler()
     def job():
         do_upload(video_path, title, cookies_path)
-    sched.add_job(job, "interval", hours=2, id="tiktok_job")
-    sched.start()
-    return sched
+    scheduler.add_job(job, "interval", hours=2, id="tiktok_job")
+    scheduler.start()
+    return scheduler
 
-
-# ─── Streamlit UI ─────────────────────────────────────────────────────────────
 
 def main():
     st.title("🎬 TikTok Scheduler")
 
     cookies_file = st.file_uploader(
-        "1) Upload your TikTok cookies.txt (Netscape format)", type="txt"
+        "1) Upload your TikTok cookies.txt (Netscape format)",
+        type=["txt"]
     )
     video_file = st.file_uploader(
-        "2) Upload your short video", type=["mp4","mov"]
+        "2) Upload your short video",
+        type=["mp4", "mov"]
     )
     title = st.text_input("3) Video Title")
 
