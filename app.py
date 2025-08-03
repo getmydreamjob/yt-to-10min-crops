@@ -24,9 +24,9 @@ def upload_and_report(video_path: str, title: str):
     """
     ok, msg = do_upload(video_path, title)
     if ok:
-        st.success(f"✅ {msg}", key="immediate_success")
+        st.success(f"✅ {msg}")
     else:
-        st.error(f"❌ Upload failed: {msg}", key="immediate_error")
+        st.error(f"❌ Upload failed: {msg}")
 
 def schedule_jobs(video_path: str, title: str):
     """
@@ -41,7 +41,7 @@ def schedule_jobs(video_path: str, title: str):
     return scheduler
 
 def main():
-    st.title("🎬 TikTok Scheduler", anchor="header")
+    st.title("🎬 TikTok Scheduler")
 
     uploaded = st.file_uploader(
         "Upload your short video",
@@ -53,32 +53,29 @@ def main():
 
     if st.button("Start Scheduling", key="start_sched"):
         if not uploaded or not title:
-            st.error("Please upload a video and enter a title.", key="input_error")
+            st.error("Please upload a video and enter a title.")
         else:
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
             tmp.write(uploaded.read())
             tmp.flush()
 
-            # schedule the background job
+            # schedule background uploads
             st.session_state.scheduler = schedule_jobs(tmp.name, title)
             # run one immediate upload and report
             upload_and_report(tmp.name, title)
 
-    # show next run & manual trigger
     sched = st.session_state.get("scheduler")
     if sched:
         job = sched.get_job("tiktok_job")
         if job:
-            st.write("**Next scheduled upload:**", 
-                     job.next_run_time.strftime("%Y-%m-%d %H:%M:%S"),
-                     key="next_run")
+            next_run = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S")
+            st.write("**Next scheduled upload:**", next_run)
             if st.button("Run Now", key="run_now"):
-                # manual trigger
                 ok, msg = do_upload(tmp.name, title)
                 if ok:
-                    st.success(f"✅ {msg}", key="manual_success")
+                    st.success(f"✅ {msg}")
                 else:
-                    st.error(f"❌ Upload failed: {msg}", key="manual_error")
+                    st.error(f"❌ Upload failed: {msg}")
 
 if __name__ == "__main__":
     main()
