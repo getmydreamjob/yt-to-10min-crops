@@ -1,5 +1,6 @@
+# requirements.txt
 streamlit
-yt-dlp
-openai-whisper
-ffmpeg-python
-torch
+google-auth-oauthlib
+google-api-python-client
+TikTokApi
+APScheduler
