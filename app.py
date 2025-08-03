@@ -5,21 +5,19 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from tiktok_uploader.upload import upload_video
 
-# Selenium + WebDriver imports
+# Selenium imports
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
 def create_driver():
-    """Launch a headless Chromium instance with matching ChromeDriver."""
+    """Launch a headless Chromium instance using the system chromedriver."""
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # Point at the system-installed Chromium
-    options.binary_location = "/usr/bin/chromium"
+    options.binary_location = "/usr/bin/chromium"         # installed via packages.txt
 
-    service = Service(ChromeDriverManager().install())
+    service = Service("/usr/bin/chromedriver")            # installed via packages.txt
     return webdriver.Chrome(service=service, options=options)
 
 def do_upload(video_path: str, title: str, cookies_path: str) -> (bool, str):
@@ -97,10 +95,8 @@ def main():
             upload_and_report(video_path, title, cookies_path)
 
     # show next run & manual trigger
-    sched = st.session_state.get("scheduler")
-    if sched:
-        job = sched.get_job("tiktok_job")
-        if job:
+    if sched := st.session_state.get("scheduler"):
+        if job := sched.get_job("tiktok_job"):
             st.write("**Next scheduled upload:**", job.next_run_time.strftime("%Y-%m-%d %H:%M:%S"))
             if st.button("Run Now", key="run_now"):
                 ok, msg = do_upload(video_path, title, cookies_path)
